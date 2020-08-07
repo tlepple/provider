@@ -95,8 +95,8 @@ install_aws_cli() {
 #  	fi
   		curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
   		unzip awscliv2.zip
-  		./awscliv2/install -i /usr/local/aws -b /usr/local/bin/aws 
-  		rm -rf awscliv2*
+  		./aws/install -i /usr/local/aws -b /usr/local/bin 
+  		rm -rf aws*
   	echo "Done installing AWS CLI v2"
 
 }
