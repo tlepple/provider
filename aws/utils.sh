@@ -1,6 +1,6 @@
-#!/bin/bash
+!/bin/bash
 
-###########################################################################################################
+########################################################################################################
 # Define Functions:
 ###########################################################################################################
 
@@ -279,4 +279,91 @@ archive_info_file () {
     cd ${STARTING_DIR}
 }
 
+#####################################################
+# Function to create instance
+#####################################################
+create_onenode_instance() {
+	log "Create oneNode ec2 instance"
+	oneNodeInstanceId=`aws --output json --region ${AWS_REGION:?} ec2 run-instances --image-id ${AMI_ID:?} --key-name ${KEY_FILENAME:?} --security-group-ids ${sg:?} --instance-type ${ONE_NODE_INSTANCE:?} --subnet-id ${subnet_id:?} --associate-public-ip-address --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"DeleteOnTermination":true,"VolumeSize":100,"VolumeType":"gp2","Encrypted":false}},{"DeviceName":"/dev/sdc","Ebs":{"DeleteOnTermination":true,"VolumeSize":100,"VolumeType":"gp2","Encrypted":false}}]' | jq -r ".Instances[0].InstanceId"`
 
+	log "Instance ID: ${oneNodeInstanceId:?}"
+	aws --region ${AWS_REGION:?} ec2 create-tags --resources ${oneNodeInstanceId:?} --tags Key=owner,Value=${OWNER_TAG:?} Key=Name,Value=${HOST_PREFIX}${OWNER_TAG:?} Key=enddate,Value=${ENDATE_TAG:?} Key=project,Value='personal development'
+	echo "oneNodeInstanceId=${oneNodeInstanceId:?}" >> ${STARTING_DIR}/bin/provider/aws/.info
+}
+
+
+#####################################################
+# Function to associate elastic ip to ec2 instance
+#####################################################
+associate_eip_2_instance() {
+    log "Associate Elastic IP to an instance"
+    AssociationID=`aws --output json --region ${AWS_REGION:?} ec2 associate-address --allocation-id ${eip_id:?} --instance-id ${oneNodeInstanceId:?}  | jq -r ".AssociationId"`
+    log "ElasticIP AssociationID: --> ${AssociationID:?}"
+    echo "AssociationID=${AssociationID:?}" >> ${STARTING_DIR}/bin/provider/aws/.info
+}
+
+#####################################################
+# Function to check ec2 instance is ready
+#####################################################
+check_ec2(){
+  log "Checking EC2 Status"
+  sleep 60s
+  stage=`aws --output json --region ${AWS_REGION:?} ec2 describe-instance-status --instance-ids $1 | jq -r ".InstanceStatuses[0].InstanceStatus.Status"`
+
+  while [ "$stage" == 'initializing' ]
+  do
+    log "EC2 status: $stage"
+    log "sleeping for 20s"
+    sleep 20
+    stage=`aws --output json --region ${AWS_REGION:?} ec2 describe-instance-status --instance-ids $1 | jq -r ".InstanceStatuses[0].InstanceStatus.Status"`
+   
+  done
+  log "EC2 status: $stage"
+  if [ "$stage" != 'ok' ]
+  then
+    log "EC2 instance not in 'OK' status. Please check the EC2 console. Exiting..."
+    exit 1
+  fi
+  log "ec2 instance ready"
+
+  # we grab the director IP and FQDN from AWS
+#  ONENODE_PUBLIC_IP=`aws --output json --region ${AWS_REGION:?} ec2 describe-instances --instance-ids $1 | jq -r ".Reservations[0].Instances[0].PublicIpAddress"`
+  ONENODE_PRIVATE_IP=`aws --output json --region ${AWS_REGION:?} ec2 describe-instances --instance-ids $1 | jq -r ".Reservations[0].Instances[0].PrivateIpAddress"`
+  ONENODE_FQDN_PRIVATE=`aws --output json --region ${AWS_REGION:?} ec2 describe-instances --instance-ids $1 | jq -r ".Reservations[0].Instances[0].PrivateDnsName"`
+#  echo "ONENODE_PUBLIC_IP=${ONENODE_PUBLIC_IP:?}" >> ${STARTING_DIR}/bin/provider/aws/.info
+  echo "ONENODE_PRIVATE_IP=${ONENODE_PRIVATE_IP:?}" >> ${STARTING_DIR}/bin/provider/aws/.info
+  echo "ONENODE_FQDN_PRIVATE=${ONENODE_FQDN_PRIVATE:?}" >> ${STARTING_DIR}/bin/provider/aws/.info
+  log "oneNode privateIP: $ONENODE_PRIVATE_IP, privateFQDN: $ONENODE_FQDN_PRIVATE"
+
+}
+
+
+#####################################################
+# Function to copy key file to a bind mount
+#####################################################
+replicate_key() {
+
+    # build a unique filename for this pem key
+	BIND_FILENAME=${OWNER_TAG}-${AWS_REGION}-${oneNodeInstanceId}-${ONENODE_PRIVATE_IP}.pem
+        echo "BIND_FILENAME=${BIND_FILENAME:?}" >> ${STARTING_DIR}/bin/provider/aws/.info
+	echo "file to copy is --> " ${KEY_FILE_PATH}${KEY_FILENAME}.pem
+#	echo " here is current string --> " ${KEY_FILE_PATH}${KEY_FILENAME}.pem ${BIND_MNT_TARGET}${BIND_FILENAME}
+#	echo "listing file contents ..."
+#	ls ${KEY_FILE_PATH}
+	export U=`whoami`
+#	cp ${KEY_FILE_PATH}${KEY_FILENAME}.pem ${BIND_MNT_TARGET}${BIND_FILENAME}
+	cp ${KEY_FILE_PATH}${KEY_FILENAME}.pem /${U}${BIND_MNT_TARGET}${BIND_FILENAME}
+}
+
+#####################################################
+# Function to add network access
+#####################################################
+add_ip_access_rule () {
+	arg_ip_in=$1
+	
+	# add the IP address to the security group for access
+	aws --region ${AWS_REGION:?} ec2 authorize-security-group-ingress --group-id ${sg:?} --protocol tcp --port 0-65535 --cidr ${arg_ip_in:?}/32
+
+	log "added rule for IP --> ${arg_ip_in:?}"
+
+}
