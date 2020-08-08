@@ -8,7 +8,7 @@ echo ${STARTING_DIR}
 # import parameters and utility functions 
 ###########################################################################################################
 #. ${starting_dir}/provider/aws/demo.properties
-. ${STARTING_DIR}/bin/provider/aws/prereq_utils.sh
+. ${STARTING_DIR}/bin/provider/aws/utils.sh
 . ${STARTING_DIR}/bin/provider/aws/.info
 
 
