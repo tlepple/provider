@@ -21,8 +21,10 @@ install_pwdless_access() {
 }
 
 
-n to install jq
 #####################################################
+# Function to install jq
+#####################################################
+
 install_jq_cli() {
 
 	#####################################################
@@ -209,5 +211,72 @@ create_prereqs() {
   echo "sg=${sg:?}" >> ${STARTING_DIR}/bin/provider/aws/.info
   log "New Security Group in ${AWS_REGION:?} created: ${OWNER_TAG:?}-security-group, ${sg:?}"
 
-
 }
+
+#####################################################
+# Function: delete all the prereqs created for the demo
+#####################################################
+terminate_prereqs() {
+  log "Deleting security group ${sg}..."
+  aws --region ${AWS_REGION:?} ec2 delete-security-group --group-id ${sg}
+  log "Deleting subnet ${subnet_id}..."
+  aws --region ${AWS_REGION:?} ec2 delete-subnet --subnet-id ${subnet_id}
+  log "Deleting route table ${rtb}..."
+  aws --region ${AWS_REGION} ec2 delete-route-table --route-table-id ${rtb}
+  if [ "$existingVpc" = "false" ]; then
+    log "Detaching internet gateway from VPC..."
+    aws --region ${AWS_REGION:?} ec2 detach-internet-gateway --vpc-id ${vpc_id} --internet-gateway-id ${igw}
+    log "Deleting internet gateway ${igw}..."
+    aws --region ${AWS_REGION:?} ec2 delete-internet-gateway --internet-gateway-id ${igw}
+    log "Deleting VPC ${vpc_id}..."
+    aws --region ${AWS_REGION:?} ec2 delete-vpc --vpc-id ${vpc_id}
+  else
+    log "Skipping existing internet gateway and VPC..."
+  fi
+  log "Deleting key ${OWNER_TAG:?}-key-file..."
+  aws --region ${AWS_REGION:?} ec2 delete-key-pair --key-name ${KEY_FILENAME:?}
+  log "Deleting elastic ip --> ${eip_id:?}"
+  aws --region ${AWS_REGION:?} ec2 release-address --allocation-id ${eip_id:?}
+  mv -f ${STARTING_DIR}/bin/provider/aws/${KEY_FILENAME:?}.pem ${STARTING_DIR}/bin/provider/aws/.${KEY_FILENAME:?}.pem.old.$(date +%s)
+  mv -f ${STARTING_DIR}/bin/provider/aws/.info ${STARTING_DIR}/bin/provider/aws/.info.old.$(date +%s)
+   export U=`whoami`
+#  rm -f ${BIND_MNT_TARGET:?}/${BIND_FILENAME:?}.pem
+ rm -f /${U}${BIND_MNT_TARGET}${BIND_FILENAME}
+#  rm -f /${U}${BIND_MNT_TARGET:?}/${BIND_FILENAME:?}.pem
+  touch ${STARTING_DIR}/bin/provider/aws/.info
+  cd ${STARTING_DIR}
+}
+
+#####################################################
+# Function terminate ec2 instances
+#####################################################
+terminate_all_ec2() {
+  log "Terminating all ec2 instances"
+  terminate_id=`aws --output json --region ${AWS_REGION:?} ec2 describe-instances --filters "Name=tag:Name,Values=${HOST_PREFIX}${OWNER_TAG:?}" | jq -r ".Reservations[].Instances[].InstanceId"`
+  log "The following instances will be deleted:" $terminate_id
+  if [ -z $terminate_id ]; then
+    log "No instances found. Skipping."
+  else
+    for i in $terminate_id; do
+        status=`aws --output json --region ${AWS_REGION:?} ec2 terminate-instances --instance-ids $i | jq -r ".TerminatingInstances[0].CurrentState.Name"`
+        log "Status: $status"
+        log 'Waiting for instances to terminate'
+        sleep 10s
+        aws --region ${AWS_REGION:?} ec2 wait instance-terminated --instance-ids $i
+        log "Instance $i terminated"
+    done
+  fi
+}
+
+#####################################################
+# Function to archive .info (needed for terminate of ec2)
+#####################################################
+
+archive_info_file () {
+    mv -f ${STARTING_DIR}/bin/provider/aws/${KEY_FILENAME:?}.pem ${STARTING_DIR}/bin/provider/aws/.${KEY_FILENAME:?}.pem.old.$(date +%s)
+    mv -f ${STARTING_DIR}/bin/provider/aws/.info ${STARTING_DIR}/bin/provider/aws/.info.old.$(date +%s)
+    touch ${STARTING_DIR}/bin/provider/aws/.info
+    cd ${STARTING_DIR}
+}
+
+
