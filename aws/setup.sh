@@ -31,3 +31,25 @@ fi
 if [ $setup_prereqs = true ]; then 
   create_prereqs
 fi
+
+
+#####################################################
+#       Step 3: create ec2 instance 
+#####################################################
+if [ $setup_onenode = true ]; then
+  create_onenode_instance
+  check_ec2 ${oneNodeInstanceId:?}
+  associate_eip_2_instance
+fi
+
+#####################################################
+#       Step 4: copy pem file to bind mount
+#####################################################
+if [ $setup_prereqs = true ]; then
+  replicate_key
+fi
+
+#####################################################
+#       Step 5: Generate connection strings
+#####################################################
+. ${STARTING_DIR}/bin/provider/aws/echo_conn_strings.sh
