@@ -9,7 +9,7 @@ echo ${STARTING_DIR}
 ###########################################################################################################
 #. $starting_dir/provider/aws/demo.properties
 . ${STARTING_DIR}/bin/provider/aws/utils.sh
-. ${STARTING_DIR}/provider/aws/.info
+. ${STARTING_DIR}/bin/provider/aws/.info
 
 
 # function for logging
