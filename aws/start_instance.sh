@@ -48,4 +48,4 @@ check_ec2 ${oneNodeInstanceId}
 
 
 # call echo_conns here:
-. {STARTING_DIR}/bin/provider/aws/echo_conn_strings.sh
+. ${STARTING_DIR}/bin/provider/aws/echo_conn_strings.sh
